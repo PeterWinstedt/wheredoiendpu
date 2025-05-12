@@ -68,12 +68,13 @@ function getSelectedDepartingBusIndex() {
 }
 
 // Helper to add a route item to the route list
-function addRouteItem(startStop, line, destination) {
+function addRouteItem(startStop, line, destination, depTime, arrTime) {
   const routeList = document.getElementById('route-list');
   if (!routeList) return;
   const div = document.createElement('div');
   div.style.marginBottom = '8px';
-  div.innerHTML = `<strong>${startStop}</strong> &rarr; <span style="color:#1976d2;font-weight:bold;">${line}</span> &rarr; <strong>${destination}</strong>`;
+  div.innerHTML = `<strong>${startStop}</strong> &rarr; <span style="color:#1976d2;font-weight:bold;">${line}</span> &rarr; <strong>${destination}</strong><br>
+    <span style='font-size: 13px;'>Departure: <b>${depTime}</b> &nbsp; Arrival: <b>${arrTime || 'unknown'}</b></span>`;
   routeList.appendChild(div);
 }
 
@@ -92,7 +93,25 @@ function addDestinationMarker(lat, lon, stopName) {
   destinationMarker.bindPopup(`<b>${stopName}</b><br>Final destination`);
 }
 
-// Update showNextBusDestination to create a route and add destination marker
+// Helper to fetch journey details
+async function fetchJourneyDetails(ref) {
+  const response = await fetch(`/api/journey-detail?ref=${encodeURIComponent(ref)}`);
+  if (!response.ok) throw new Error('Failed to fetch journey details');
+  return await response.json();
+}
+
+// Helper to find arrival time at the final destination stop
+function findArrivalTimeInJourney(journey, direction) {
+  if (!journey || !journey.stop) return '';
+  // Try to find the stop whose name matches the direction (case-insensitive, partial match allowed)
+  const stops = Array.isArray(journey.stop) ? journey.stop : [journey.stop];
+  const destStop = stops.find(s =>
+    s.name && direction && s.name.toLowerCase().includes(direction.toLowerCase().split(' ')[0])
+  );
+  return destStop && (destStop.arrTime || destStop.arrivalTime) ? (destStop.arrTime || destStop.arrivalTime) : '';
+}
+
+// Update showNextBusDestination to fetch journey details and use arrival time
 async function showNextBusDestination() {
   try {
     // Show loading indicator for next bus
@@ -113,22 +132,44 @@ async function showNextBusDestination() {
     // Get the closest stop
     const closestStop = stopsData.stopLocationOrCoordLocation[0].StopLocation;
     // Get the number of departures to fetch (always at least 3 for this feature)
-    const departures = await getDepartures(closestStop.extId, 3);
+    const departures = await getDepartures(closestStop.extId, 10); // Fetch more to ensure enough buses
     if (!departures.Departure || departures.Departure.length === 0) {
       throw new Error('No departures found for this stop');
     }
+    // Filter to only bus departures
+    const busDepartures = departures.Departure.filter(dep => {
+      const prod = dep.Product || {};
+      const catFields = [prod.catOut, prod.catOutL, prod.catIn, prod.catInL, prod.name, prod.type];
+      return catFields.some(f => typeof f === 'string' && /bus|buss/i.test(f))
+        || (prod.line && prod.catCode);
+    });
+    if (busDepartures.length === 0) {
+      throw new Error('No bus departures found for this stop.');
+    }
     // Get the selected departing bus index (1-based)
     const busIndex = getSelectedDepartingBusIndex() - 1;
-    if (busIndex >= departures.Departure.length) {
-      throw new Error('Not enough departures available for your selection.');
+    if (busIndex >= busDepartures.length) {
+      throw new Error('Not enough bus departures available for your selection.');
     }
-    // Get the selected departure
-    const selectedDeparture = departures.Departure[busIndex];
+    // Get the selected bus departure
+    const selectedDeparture = busDepartures[busIndex];
+    // Fetch journey details and find arrival time at the final destination
+    let arrivalTime = '';
+    if (selectedDeparture.JourneyDetailRef && selectedDeparture.JourneyDetailRef.ref) {
+      try {
+        const journey = await fetchJourneyDetails(selectedDeparture.JourneyDetailRef.ref);
+        arrivalTime = findArrivalTimeInJourney(journey.JourneyDetail, selectedDeparture.direction);
+      } catch (err) {
+        console.warn('Could not fetch journey details:', err);
+      }
+    }
     // Add to route list
     addRouteItem(
       closestStop.name,
       selectedDeparture.Product.line,
-      selectedDeparture.direction
+      selectedDeparture.direction,
+      selectedDeparture.time,
+      arrivalTime || selectedDeparture.arrTime || selectedDeparture.arrivalTime || ''
     );
     // Show popup with selected bus info
     const stopLat = normalizeCoord(closestStop.lat);
@@ -148,8 +189,6 @@ async function showNextBusDestination() {
       .setContent(popupContent)
       .openOn(map);
     // Add marker for the final destination bus stop (simulate with same name, as API does not provide coordinates)
-    // In a real app, you would look up the coordinates for the destination stop
-    // For demo, just offset the marker slightly from the start stop
     let destLat = stopLat + 0.002;
     let destLon = stopLon + 0.002;
     addDestinationMarker(destLat, destLon, selectedDeparture.direction);
