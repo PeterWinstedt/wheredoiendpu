@@ -1,0 +1,27 @@
+{
+  "name": "trafiklab-bus-stop-finder",
+  "version": "1.0.0",
+  "description": "Find nearby bus stops using Trafiklab ResRobot API",
+  "main": "proxy-server.js",
+  "scripts": {
+    "start": "node proxy-server.js",
+    "dev": "nodemon proxy-server.js"
+  },
+  "keywords": [
+    "trafiklab",
+    "resrobot",
+    "bus",
+    "public-transport",
+    "geolocation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "type": "module"
+} 
