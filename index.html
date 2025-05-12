@@ -141,6 +141,32 @@
 </head>
 <body>
   <h1>Nearby Bus Stops</h1>
+  <div style="margin-bottom: 16px;">
+    <label for="num-bus-rides" style="font-weight: bold; display: block; margin-bottom: 4px;">Select number of bus rides</label>
+    <select id="num-bus-rides" style="font-size: 16px; padding: 4px 8px;">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+      <option value="9">9</option>
+      <option value="10">10</option>
+    </select>
+  </div>
+  <div style="margin-bottom: 16px;">
+    <label style="font-weight: bold; display: block; margin-bottom: 4px;">
+      Using the
+      <select id="departing-bus-order" style="font-size: 16px; padding: 4px 8px; margin: 0 4px;">
+        <option value="1">first</option>
+        <option value="2">second</option>
+        <option value="3">third</option>
+      </select>
+      departing bus
+    </label>
+  </div>
   <div id="error"></div>
   <div id="map"></div>
   <div><span id="loading" class="loading" style="display: none;">Loading...</span></div>
