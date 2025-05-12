@@ -158,6 +158,27 @@ app.get('/api/departures', async (req, res) => {
   }
 });
 
+// Proxy endpoint for journey details
+app.get('/api/journey-detail', async (req, res) => {
+  const { ref } = req.query;
+  if (!ref) {
+    return res.status(400).json({ error: 'Missing required parameter: ref' });
+  }
+  try {
+    const response = await fetch(
+      `https://api.resrobot.se/v2.1/journeyDetail?accessId=${apiKey}&ref=${encodeURIComponent(ref)}&format=json`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching journey details:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start the server
 app.listen(port, () => {
   console.log(`Proxy server running at http://localhost:${port}`);
