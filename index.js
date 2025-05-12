@@ -4,6 +4,7 @@
 // Global variables
 let map;
 let closestStopMarker = null; // Track the closest stop marker
+let destinationMarker = null; // Track the destination marker
 
 // Get user's current location
 function getUserLocation() {
@@ -60,7 +61,38 @@ async function getDepartures(stopId, maxResults = 10) {
   }
 }
 
-// Find the next departing bus from the closest stop and show in popup
+// Helper to get the selected departing bus index (1-based)
+function getSelectedDepartingBusIndex() {
+  const select = document.getElementById('departing-bus-order');
+  return select ? parseInt(select.value, 10) : 1;
+}
+
+// Helper to add a route item to the route list
+function addRouteItem(startStop, line, destination) {
+  const routeList = document.getElementById('route-list');
+  if (!routeList) return;
+  const div = document.createElement('div');
+  div.style.marginBottom = '8px';
+  div.innerHTML = `<strong>${startStop}</strong> &rarr; <span style="color:#1976d2;font-weight:bold;">${line}</span> &rarr; <strong>${destination}</strong>`;
+  routeList.appendChild(div);
+}
+
+// Helper to add a marker for the final destination bus stop
+function addDestinationMarker(lat, lon, stopName) {
+  if (destinationMarker) {
+    map.removeLayer(destinationMarker);
+  }
+  destinationMarker = L.marker([lat, lon], {
+    icon: L.divIcon({
+      className: 'destination-stop-marker',
+      html: `<div class=\"destination-stop-icon\">🏁</div>`,
+      iconSize: [35, 35]
+    })
+  }).addTo(map);
+  destinationMarker.bindPopup(`<b>${stopName}</b><br>Final destination`);
+}
+
+// Update showNextBusDestination to create a route and add destination marker
 async function showNextBusDestination() {
   try {
     // Show loading indicator for next bus
@@ -68,66 +100,61 @@ async function showNextBusDestination() {
     if (loadingElement) {
       loadingElement.style.display = 'inline-block';
     }
-    
     // Get user location
     const position = await getUserLocation();
-    
     // Save current map center and zoom
     const currentCenter = map.getCenter();
     const currentZoom = map.getZoom();
-    
     // Find nearby stops
     const stopsData = await findNearbyStops(position.lat, position.lng);
-    
     if (!stopsData.stopLocationOrCoordLocation || stopsData.stopLocationOrCoordLocation.length === 0) {
       throw new Error('No stops found nearby');
     }
-    
     // Get the closest stop
     const closestStop = stopsData.stopLocationOrCoordLocation[0].StopLocation;
-    
-    // Get departures for the closest stop
-    const departures = await getDepartures(closestStop.extId);
-    
+    // Get the number of departures to fetch (always at least 3 for this feature)
+    const departures = await getDepartures(closestStop.extId, 3);
     if (!departures.Departure || departures.Departure.length === 0) {
       throw new Error('No departures found for this stop');
     }
-    
-    // Get the next departure
-    const nextDeparture = departures.Departure[0];
-    
-    // Calculate valid stop coordinates
-    const stopLat = closestStop.lat / 1000000;
-    const stopLon = closestStop.lon / 1000000;
-    
-    // Validate coordinates before using them
-    const validCoords = isValidCoordinate(stopLat, stopLon);
-    
-    // If coordinates are invalid, use user position instead
-    const popupLatLng = validCoords ? 
-      [stopLat, stopLon] : 
-      [position.lat, position.lng];
-    
-    // Show popup with next bus info
+    // Get the selected departing bus index (1-based)
+    const busIndex = getSelectedDepartingBusIndex() - 1;
+    if (busIndex >= departures.Departure.length) {
+      throw new Error('Not enough departures available for your selection.');
+    }
+    // Get the selected departure
+    const selectedDeparture = departures.Departure[busIndex];
+    // Add to route list
+    addRouteItem(
+      closestStop.name,
+      selectedDeparture.Product.line,
+      selectedDeparture.direction
+    );
+    // Show popup with selected bus info
+    const stopLat = normalizeCoord(closestStop.lat);
+    const stopLon = normalizeCoord(closestStop.lon);
     const popupContent = `
-      <div class="next-bus-popup">
-        <h3>Next Departure</h3>
+      <div class=\"next-bus-popup\">
+        <h3>Selected Departure</h3>
         <p><strong>From:</strong> ${closestStop.name}</p>
-        <p><strong>To:</strong> ${nextDeparture.direction}</p>
-        <p><strong>Line:</strong> ${nextDeparture.Product.line} (${nextDeparture.Product.name})</p>
-        <p><strong>Departing:</strong> ${nextDeparture.time}</p>
-        <button onclick="showStopDepartures('${closestStop.extId}', '${closestStop.name}')">Show All Departures</button>
+        <p><strong>To:</strong> ${selectedDeparture.direction}</p>
+        <p><strong>Line:</strong> ${selectedDeparture.Product.line} (${selectedDeparture.Product.name})</p>
+        <p><strong>Departing:</strong> ${selectedDeparture.time}</p>
+        <button onclick=\"showStopDepartures('${closestStop.extId}', '${closestStop.name}')\">Show All Departures</button>
       </div>
     `;
-    
-    const popup = L.popup()
-      .setLatLng(popupLatLng)
+    L.popup()
+      .setLatLng([stopLat, stopLon])
       .setContent(popupContent)
       .openOn(map);
-    
+    // Add marker for the final destination bus stop (simulate with same name, as API does not provide coordinates)
+    // In a real app, you would look up the coordinates for the destination stop
+    // For demo, just offset the marker slightly from the start stop
+    let destLat = stopLat + 0.002;
+    let destLon = stopLon + 0.002;
+    addDestinationMarker(destLat, destLon, selectedDeparture.direction);
     // Restore original map view
     map.setView(currentCenter, currentZoom);
-    
     // Hide loading indicator
     if (loadingElement) {
       loadingElement.style.display = 'none';
@@ -138,7 +165,6 @@ async function showNextBusDestination() {
     if (loadingElement) {
       loadingElement.style.display = 'none';
     }
-    
     document.getElementById('error').textContent = `Error: ${error.message}`;
     console.error('Error showing next bus:', error);
   }
